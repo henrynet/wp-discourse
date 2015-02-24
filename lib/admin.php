@@ -21,6 +21,9 @@ class DiscourseAdmin {
     add_settings_field( 'discourse_api_key', 'API Key', array( $this, 'api_key_input' ), 'discourse', 'default_discourse' );
     add_settings_field( 'discourse_enable_sso', 'Enable SSO', array( $this, 'enable_sso_checkbox' ), 'discourse', 'default_discourse' );
     add_settings_field( 'discourse_sso_secret', 'SSO Secret Key', array( $this, 'sso_secret_input' ), 'discourse', 'default_discourse' );
+    if ( class_exists( 'Groups_Group' ) ) {
+      add_settings_field( 'discourse_sso_groups_login', 'SSO Groups Login', array( $this, 'sso_groups_login' ), 'discourse', 'default_discourse' );  
+    }
     add_settings_field( 'discourse_publish_username', 'Publishing username', array( $this, 'publish_username_input' ), 'discourse', 'default_discourse' );
     add_settings_field( 'discourse_publish_category', 'Published category', array( $this, 'publish_category_input' ), 'discourse', 'default_discourse' );
     add_settings_field( 'discourse_publish_format', 'Publish format', array( $this, 'publish_format_textarea' ), 'discourse', 'default_discourse' );
@@ -70,6 +73,10 @@ class DiscourseAdmin {
 
   function sso_secret_input() {
     self::text_input( 'sso-secret', '' );
+  }
+
+  function sso_groups_login() {
+    self::groups_select_input( 'sso_groups_login', Groups_Group::get_groups() );
   }
 
   function publish_username_input() {
@@ -165,6 +172,26 @@ class DiscourseAdmin {
     <?php
   }
 
+  function groups_select_input( $option, $groups) {
+    $options = get_option( 'discourse' );
+
+    echo "<select multiple id='discourse_sso_groups_login' name='discourse[sso_groups_login][]'>";
+
+    foreach ( $groups as $group ) {
+      $group_name = $group->name;
+      if ( array_key_exists( $option, $options) and in_array( $group_name, $options[$option] ) ) {
+        $value = 'selected';
+      } else {
+        $value = '';
+      }
+
+      echo "<option ".$value." value='".$group_name."'>".$group_name."</option>";
+    }
+
+    echo '</select>';
+
+  }
+
   function post_type_select_input( $option, $post_types) {
     $options = get_option( 'discourse' );
 
@@ -172,13 +199,13 @@ class DiscourseAdmin {
 
     foreach ( $post_types as $post_type ) {
 
-      if (array_key_exists( $option, $options) and in_array( $post_type, $options[$option] ) ) {
+      if ( array_key_exists( $option, $options) and in_array( $post_type, $options[$option] ) ) {
         $value = 'selected';
       } else {
         $value = '';
       }
 
-      echo "<option ".$value." value='".$post_type."''>".$post_type."</option>";
+      echo "<option ".$value." value='".$post_type."'>".$post_type."</option>";
     }
 
     echo '</select>';
