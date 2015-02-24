@@ -20,6 +20,7 @@ class Discourse {
     'api-key' => '',
     'enable-sso' => 0,
     'sso-secret' => '',
+    'sso-groups-login' => 'Registered',
     'publish-username' => '',
     'publish-category' => '',
     'auto-publish' => 0,
@@ -138,13 +139,40 @@ class Discourse {
         $redirect = str_replace( '%0A', '%0B', $redirect );
 
         // Build login URL
-        $login = wp_login_url( $redirect );
+        $login_url = get_permalink( get_option( 'woocommerce_myaccount_page_id' ) );
+        $login_url = add_query_arg( 'redirect_to', urlencode( $redirect ), $login_url );
 
         // Redirect to login
-        wp_redirect( $login );
+        wp_redirect( ! empty( $login_url ) ? $login_url : wp_login_url( $redirect ) );
         exit;
       }
       else {
+        $is_paid_member  = false;
+        if ( current_user_can( 'administrator' ) ) {
+          $is_paid_member  = true;
+        }
+        else {
+          require_once( ABSPATH . 'wp-includes/pluggable.php' );
+          if ( class_exists( 'Groups_Group' ) &&  class_exists( 'Groups_User_Group' ) ) {
+            $allow_groups = $discourse_options['sso_groups_login'];
+            if ( ! empty( $allow_groups ) ) {
+              foreach ( $allow_groups as $allow_group ) {
+                if ( $group = Groups_Group::read_by_name( $allow_group ) ) {
+                  $is_paid_member = Groups_User_Group::read( get_current_user_id(), $group->group_id );
+                  if ( $is_paid_member ) {
+                    break;
+                  }
+                }
+              }
+            }
+          }         
+        }
+
+        if ( ! $is_paid_member ) {
+          $reg_page_url = get_permalink( get_page_by_path( 'select-register-plans' ) );
+          wp_redirect( ! empty( $reg_page_url ) ? $reg_page_url : site_url() );
+          exit;
+        }
 
         // Check for helper class
         if ( ! class_exists( 'Discourse_SSO' ) ) {
@@ -183,7 +211,7 @@ class Discourse {
           'username' => $current_user->user_login,
           'email' => $current_user->user_email,
           'about_me' => $current_user->description,
-          'external_id' => $current_user->ID,
+          'external_id' => 100000 + $current_user->ID,
           'avatar_url' => self::get_avatar_url($current_user->ID)
         );
 
@@ -273,7 +301,12 @@ class Discourse {
           }
           $options = $options . '&api_key=' . $discourse_options['api-key'] . '&api_username=' . $discourse_options['publish-username'];
 
-          $permalink = (string) get_post_meta( $postid, 'discourse_permalink', true ) . '/wordpress.json?' . $options;
+          $permalink = (string) get_post_meta( $postid, 'discourse_permalink', true );
+          if ( empty ( $permalink ) ) {
+            return;
+          }
+
+          $permalink = $permalink . '/wordpress.json?' . $options;
           $soptions = array( 'http' => array( 'ignore_errors' => true, 'method'  => 'GET' ) );
           $context = stream_context_create( $soptions );
           $result = file_get_contents( $permalink, false, $context );
@@ -468,6 +501,12 @@ class Discourse {
       $json = json_decode( $result );
 
       // todo may have $json->errors with list of errors
+      if ( ! empty( $json->error ) && ! empty( $json->error->code ) ) {
+        throw new Exception( $json->error->code );
+      }
+      if ( empty( $json ) ) {
+        return;
+      }
 
       if( property_exists( $json, 'id' ) ) {
         $discourse_id = (int) $json->id;
@@ -490,6 +529,9 @@ class Discourse {
       }
 
       // todo may have $json->errors with list of errors
+      if ( ! empty( $json->error ) && ! empty( $json->error->code ) ) {
+        throw new Exception( $json->error->code );
+      }
     }
 
     if( isset( $json->topic_slug ) ) {

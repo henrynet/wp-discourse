@@ -19,6 +19,7 @@ class DiscourseAdmin {
    */
   public function admin_init() {
     register_setting( 'discourse', 'discourse', array( $this, 'discourse_validate_options' ) );
+
     add_settings_section( 'discourse_wp_api', 'Common Settings', array( $this, 'init_default_settings' ), 'discourse' );
 
     if( !empty( $this->options['url'] ) && !empty( $this->options['api-key'] ) ){
@@ -33,6 +34,9 @@ class DiscourseAdmin {
 
     add_settings_field( 'discourse_enable_sso', 'Enable SSO', array( $this, 'enable_sso_checkbox' ), 'discourse', 'discourse_wp_sso' );
     add_settings_field( 'discourse_sso_secret', 'SSO Secret Key', array( $this, 'sso_secret_input' ), 'discourse', 'discourse_wp_sso' );
+    if ( class_exists( 'Groups_Group' ) ) {
+      add_settings_field( 'discourse_sso_groups_login', 'SSO Groups Login', array( $this, 'sso_groups_login' ), 'discourse', 'discourse_wp_sso' );  
+    }
 
     add_settings_field( 'discourse_publish_category', 'Published category', array( $this, 'publish_category_input' ), 'discourse', 'discourse_wp_publish' );
     add_settings_field( 'discourse_publish_format', 'Publish format', array( $this, 'publish_format_textarea' ), 'discourse', 'discourse_wp_publish' );
@@ -85,6 +89,10 @@ class DiscourseAdmin {
 
   function sso_secret_input() {
     self::text_input( 'sso-secret', '' );
+  }
+
+  function sso_groups_login() {
+    self::groups_select_input( 'sso_groups_login', Groups_Group::get_groups() );
   }
 
   function publish_username_input() {
@@ -182,6 +190,26 @@ class DiscourseAdmin {
     </label>
     <p class="description"><?php echo $description ?></p>
     <?php
+  }
+
+  function groups_select_input( $option, $groups) {
+    $options = get_option( 'discourse' );
+
+    echo "<select multiple id='discourse_sso_groups_login' name='discourse[sso_groups_login][]'>";
+
+    foreach ( $groups as $group ) {
+      $group_name = $group->name;
+      if ( array_key_exists( $option, $options) and in_array( $group_name, $options[$option] ) ) {
+        $value = 'selected';
+      } else {
+        $value = '';
+      }
+
+      echo "<option ".$value." value='".$group_name."'>".$group_name."</option>";
+    }
+
+    echo '</select>';
+
   }
 
   function post_type_select_input( $option, $post_types) {
