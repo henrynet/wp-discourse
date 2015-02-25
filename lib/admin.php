@@ -212,26 +212,6 @@ class DiscourseAdmin {
   }
 
   function post_type_select_input( $option, $post_types) {
-    $options = get_option( 'discourse' );
-
-    echo "<select multiple id='discourse_sso_groups_login' name='discourse[sso_groups_login][]'>";
-
-    foreach ( $groups as $group ) {
-      $group_name = $group->name;
-      if ( array_key_exists( $option, $options) and in_array( $group_name, $options[$option] ) ) {
-        $value = 'selected';
-      } else {
-        $value = '';
-      }
-
-      echo "<option ".$value." value='".$group_name."'>".$group_name."</option>";
-    }
-
-    echo '</select>';
-
-  }
-
-  function post_type_select_input( $option, $post_types) {
     $options = $this->options;
 
     echo "<select multiple id='discourse_allowed_post_types' name='discourse[allowed_post_types][]'>";
