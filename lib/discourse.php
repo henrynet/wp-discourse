@@ -211,7 +211,7 @@ class Discourse {
           'username' => $current_user->user_login,
           'email' => $current_user->user_email,
           'about_me' => $current_user->description,
-          'external_id' => 100000 + $current_user->ID,
+          'external_id' => $current_user->ID,
           'avatar_url' => self::get_avatar_url($current_user->ID)
         );
 
