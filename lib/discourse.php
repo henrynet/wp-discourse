@@ -12,7 +12,7 @@ class Discourse {
   }
 
   // Version
-  static $version ='0.6.5';
+  static $version ='0.6.6';
 
   // Options and defaults
   static $options = array(
@@ -92,7 +92,7 @@ class Discourse {
     add_action( 'save_post', array( $this, 'save_postdata' ) );
     add_action( 'xmlrpc_publish_post', array( $this, 'xmlrpc_publish_post_to_discourse' ) );
     add_action( 'transition_post_status', array( $this, 'publish_post_to_discourse' ), 10, 3 );
-    add_action( 'parse_request', array( $this, 'sso_parse_request' ) );
+    add_action( 'parse_query', array( $this, 'sso_parse_request' ) );
   }
 
   function discourse_comments_js() {
@@ -104,6 +104,14 @@ class Discourse {
         var id = jQuery(this).data('youtube-id'),
             url = 'https://www.youtube.com/watch?v=' + id;
         jQuery(this).replaceWith('<a href="' + url + '">' + url + '</a>');
+      });
+      jQuery('a.mention').each(function() {
+        <?php
+          $discourse_options = self::get_plugin_options();
+          $discourse_url = $discourse_options['url'];
+        ?>
+        var discourse_url = '<?php echo $discourse_url; ?>';
+        jQuery(this).attr('href', discourse_url + jQuery(this).attr('href'));
       });
     });
     </script>
@@ -122,6 +130,19 @@ class Discourse {
   {
     $discourse_options = self::get_plugin_options();
 
+    // sync logout from Discourse to WordPress from Adam Capirola : https://meta.discourse.org/t/wordpress-integration-guide/27531
+    // to make this work, enter a URL of the form "http://my-wp-blog.com/?request=logout" in the "logout redirect"
+    // field in your Discourse admin
+    if (isset( $discourse_options['enable-sso'] ) &&
+        intval( $discourse_options['enable-sso'] ) == 1 &&
+        isset( $_GET['request'] ) && $_GET['request'] == 'logout' ) {
+
+      wp_logout();
+      wp_redirect( $discourse_options['url'] );
+      exit;
+    }
+    // end logout processing
+
     // only process requests with "my-plugin=ajax-handler"
     if ( isset( $discourse_options['enable-sso'] ) &&
          intval( $discourse_options['enable-sso'] ) == 1 &&
@@ -138,7 +159,7 @@ class Discourse {
         $redirect = str_replace( '%0A', '%0B', $redirect );
 
         // Build login URL
-        $login = wp_login_url( $redirect );
+        $login = wp_login_url( esc_url_raw( $redirect ) );
 
         // Redirect to login
         wp_redirect( $login );
@@ -277,26 +298,28 @@ class Discourse {
           $options = $options . '&api_key=' . $discourse_options['api-key'] . '&api_username=' . $discourse_options['publish-username'];
 
           $permalink = (string) get_post_meta( $postid, 'discourse_permalink', true ) . '/wordpress.json?' . $options;
-          $soptions = array( 'http' => array( 'ignore_errors' => true, 'method'  => 'GET' ) );
-          $context = stream_context_create( $soptions );
-          $result = file_get_contents( $permalink, false, $context );
-          $json = json_decode( $result );
+          $result = wp_remote_get( $permalink );
+          if ( is_wp_error( $result ) ) {
+             error_log( $result->get_error_message() );
+          } else {
+            $json = json_decode( $result['body'] );
 
-          if ( isset( $json->posts_count ) ) {
-            $posts_count = $json->posts_count - 1;
-            if ( $posts_count < 0 ) {
-              $posts_count = 0;
+            if ( isset( $json->posts_count ) ) {
+              $posts_count = $json->posts_count - 1;
+              if ( $posts_count < 0 ) {
+                $posts_count = 0;
+              }
+
+              delete_post_meta( $postid, 'discourse_comments_count' );
+              add_post_meta( $postid, 'discourse_comments_count', $posts_count, true );
+
+              delete_post_meta( $postid, 'discourse_comments_raw' );
+
+              add_post_meta( $postid, 'discourse_comments_raw', esc_sql( $result['body'] ) , true );
+
+              delete_post_meta( $postid, 'discourse_last_sync' );
+              add_post_meta( $postid, 'discourse_last_sync', $time, true );
             }
-
-            delete_post_meta( $postid, 'discourse_comments_count' );
-            add_post_meta( $postid, 'discourse_comments_count', $posts_count, true );
-
-            delete_post_meta( $postid, 'discourse_comments_raw' );
-
-            add_post_meta( $postid, 'discourse_comments_raw', esc_sql( $result ) , true );
-
-            delete_post_meta( $postid, 'discourse_last_sync' );
-            add_post_meta( $postid, 'discourse_last_sync', $time, true );
           }
         }
         $wpdb->get_results( "SELECT RELEASE_LOCK( 'discourse_lock' )" );
@@ -309,9 +332,19 @@ class Discourse {
 
     if( self::use_discourse_comments( $post->ID ) ) {
       self::sync_comments( $post->ID );
-      return WPDISCOURSE_PATH . '/templates/comments.php';
+      $options = self::get_plugin_options();
+      $num_WP_comments = get_comments_number();
+      if ( ! $options['show-existing-comments'] || $num_WP_comments == 0 ) {
+        // only show the Discourse comments
+        return WPDISCOURSE_PATH . '/templates/comments.php';
+      } else {
+        // show the Discourse comments then show the existing WP comments (in $old)
+        include WPDISCOURSE_PATH . '/templates/comments.php';
+        echo '<div class="discourse-existing-comments-heading">' . $options['existing-comments-heading'] . '</div>';
+        return $old;
+      }
     }
-
+    // show the existing WP comments
     return $old;
   }
 
@@ -458,35 +491,34 @@ class Discourse {
       $url =  $options['url'] .'/posts';
 
       // use key 'http' even if you send the request to https://...
-      $soptions = array(
-        'http' => array(
-          'ignore_errors' => true,
-          'method'  => 'POST',
-          'content' => http_build_query( $data ),
-          'header' => "Content-Type: application/x-www-form-urlencoded\r\n"
-        )
+      $post_options = array(
+        'timeout' => 30,
+        'method' => 'POST',
+        'body' => http_build_query( $data ),
       );
-      $context = stream_context_create( $soptions );
-      $result = file_get_contents( $url, false, $context );
-      $json = json_decode( $result );
+      $result = wp_remote_post( $url, $post_options);
+      if ( is_wp_error( $result ) ) {
+        error_log( $result->get_error_message() );
+      } else {
+        $json = json_decode( $result['body'] );
 
-      // todo may have $json->errors with list of errors
+        // todo may have $json->errors with list of errors
 
-      if( property_exists( $json, 'id' ) ) {
-        $discourse_id = (int) $json->id;
-      }
+        if( property_exists( $json, 'id' ) ) {
+          $discourse_id = (int) $json->id;
+        }
 
-      if( isset( $discourse_id ) && $discourse_id > 0 ) {
-        add_post_meta( $postid, 'discourse_post_id', $discourse_id, true );
+        if( isset( $discourse_id ) && $discourse_id > 0 ) {
+          add_post_meta( $postid, 'discourse_post_id', $discourse_id, true );
+        }
       }
     } else {
       // for now the updates are just causing grief, leave'em out
       return;
       $url = $options['url'] .'/posts/' . $discourse_id ;
-      $soptions = array( 'http' => array( 'ignore_errors' => true, 'method'  => 'PUT','content' => http_build_query( $data) ));
-      $context = stream_context_create( $soptions);
-      $result = file_get_contents( $url, false, $context );
-      $json = json_decode( $result );
+      $post_options = array( 'method' => 'PUT', 'body' => http_build_query( $data ) );
+      $result = wp_remote_post( $url, $post_options );
+      $json = json_decode( $result['body'] );
 
       if(isset( $json->post ) ) {
         $json = $json->post;

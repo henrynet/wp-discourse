@@ -41,12 +41,15 @@ class DiscourseAdmin {
     add_settings_field( 'discourse_allowed_post_types', 'Post Types to publish to Discourse', array( $this, 'post_types_select' ), 'discourse', 'discourse_wp_publish' );
 
     add_settings_field( 'discourse_use_discourse_comments', 'Use Discourse Comments', array( $this, 'use_discourse_comments_checkbox' ), 'discourse', 'discourse_comments' );
+    add_settings_field( 'discourse_show_existing_comments', 'Show Existing WP Comments', array( $this, 'show_existing_comments_checkbox' ), 'discourse', 'discourse_comments' );
+    add_settings_field( 'discourse_existing_comments_heading', 'Existing Comments Heading', array( $this, 'existing_comments_heading_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_max_comments', 'Max visible comments', array( $this, 'max_comments_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_min_replies', 'Min number of replies', array( $this, 'min_replies_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_min_score', 'Min score of posts', array( $this, 'min_score_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_min_trust_level', 'Min trust level', array( $this, 'min_trust_level_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_bypass_trust_level_score', 'Bypass trust level score', array( $this, 'bypass_trust_level_input' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_custom_excerpt_length', 'Custom excerpt length', array( $this, 'custom_excerpt_length' ), 'discourse', 'discourse_comments' );
+    add_settings_field( 'discourse_custom_datetime_format', 'Custom Datetime Format', array( $this, 'custom_datetime_format' ), 'discourse', 'discourse_comments' );
 
     add_settings_field( 'discourse_only_show_moderator_liked', 'Only import comments liked by a moderator', array( $this, 'only_show_moderator_liked_checkbox' ), 'discourse', 'discourse_comments' );
     add_settings_field( 'discourse_template_replies', 'HTML Template to use when there are replies', array( $this, 'template_replies_html' ), 'discourse', 'discourse_comments' );
@@ -114,7 +117,15 @@ class DiscourseAdmin {
   }
 
   function use_discourse_comments_checkbox() {
-    self::checkbox_input( 'use-discourse-comments', 'Use Discourse to comment on Discourse published posts (hiding existing comment section)' );
+    self::checkbox_input( 'use-discourse-comments', 'Use Discourse to comment on Discourse published posts' );
+  }
+
+  function show_existing_comments_checkbox() {
+    self::checkbox_input( 'show-existing-comments', 'Display existing WordPress comments beneath Discourse comments' );
+  }
+
+  function existing_comments_heading_input() {
+    self::text_input( 'existing-comments-heading', 'Heading for existing WordPress comments (e.g. "Historical Comment Archive")' );
   }
 
   function min_replies_input() {
@@ -131,6 +142,10 @@ class DiscourseAdmin {
 
   function custom_excerpt_length() {
     self::text_input( 'custom-excerpt-length', 'Custom excerpt length in words (default: 55)' );
+  }
+
+  function custom_datetime_format(){
+    self::text_input( 'custom-datetime-format', 'Custom comment meta datetime string format (default: "' . get_option('date_format') . '"). See <a href="https://codex.wordpress.org/Formatting_Date_and_Time" target="_blank">this</a> for more info.' );
   }
 
   function bypass_trust_level_input() {
